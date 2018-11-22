@@ -1,12 +1,11 @@
-#include <iostream>
-
 #define PICOBENCH_IMPLEMENT
 #include "include/picobench/picobench.hpp"
 
 #include <random>
 #include <vector>
 #include <limits>
-#include <memory>
+#include <iostream>
+
 #undef min
 #undef max
 

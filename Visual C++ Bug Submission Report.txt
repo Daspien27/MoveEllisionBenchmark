@@ -1,0 +1,89 @@
+Toolset:
+
+PS C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86> .\cl.exe
+/Bv
+Microsoft (R) C/C++ Optimizing Compiler Version 19.16.27024.1 for x86
+Copyright (C) Microsoft Corporation.  All rights reserved.
+
+Compiler Passes:
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\cl.exe:        Version 19.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\c1.dll:        Version 19.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\c1xx.dll:      Version 19.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\c2.dll:        Version 19.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\link.exe:      Version 14.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\mspdb140.dll:  Version 14.16.27024.1
+ C:\Program Files (x86)\Microsoft Visual Studio\2017\Professional\VC\Tools\MSVC\14.16.27023\bin\Hostx86\x86\1033\clui.dll: Version 19.16.27024.1
+
+The command line used to run
+
+ ^C:\USERS\A8\DOCUMENTS\GITHUB\MOVEELLISIONBENCHMARK\MAIN.CPP
+/c /nologo /W3 /WX- /diagnostics:classic /O2 /Ob2 /Oy- /D WIN32 /D _WINDOWS /D NDEBUG /D "CMAKE_INTDIR=\"Release\"" /D _MBCS /Gm- /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /std:c++17 /Fo"MOVEELLISIONBENCHMARK.DIR\RELEASE\\" /Fd"MOVEELLISIONBENCHMARK.DIR\RELEASE\VC141.PDB" /Gd /TP /analyze- C:\USERS\A8\DOCUMENTS\GITHUB\MOVEELLISIONBENCHMARK\MAIN.CPP
+
+and
+
+^C:\USERS\A8\DOCUMENTS\GITHUB\MOVEELLISIONBENCHMARK\MINIMAL.CPP
+/c /nologo /W3 /WX- /diagnostics:classic /O2 /Ob2 /Oy- /D WIN32 /D _WINDOWS /D NDEBUG /D "CMAKE_INTDIR=\"Release\"" /D _MBCS /Gm- /EHsc /MD /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /GR /std:c++17 /Fo"MINIMALWORKINGEXAMPLE.DIR\RELEASE\\" /Fd"MINIMALWORKINGEXAMPLE.DIR\RELEASE\VC141.PDB" /Gd /TP /analyze- /Bt+  C:\USERS\A8\DOCUMENTS\GITHUB\MOVEELLISIONBENCHMARK\MINIMAL.CPP
+
+Description:
+
+https://github.com/Daspien27/MoveEllisionBenchmark
+
+----Overview----
+Given a class Obj. We have three situations I expected to run at the same speed:
+
+Obj A, B, C; //A, B, C are initialized with data
+
+//Ex1 "Orig":
+C.x = A.x - B.x;
+C.y = A.y - B.y;
+C.z = A.z - B.z;
+C.w = A.w - B.w;
+
+//Ex2 "Normal (expected to be as fast as Orig)":
+Obj C = A - B;
+
+//Ex3 "Slow (expected to be as fast as Orig, but a claim was made that it creates a temp that it has to copy/move)"
+Obj C;
+C = A - B;
+----------------
+
+The MSVC x86 compiler seems to cause a slowdown when trying to use operator overloads (I am sure other functions that return objects are similarly affected). 
+Effectively, I think this is inconsistent with the x64 compiler and Clang compiler. It appears to be a problem of not being properly elided during a move.
+
+My expected fix would be that at the very minimum operator- (and similar functions) would be as fast as the version labelled "Orig"
+
+Here is an example output run directly from my machine for x86:
+
+===============================================================================
+   Name (baseline is *)   |  ns/op  | Baseline |  Ops/second
+===============================================================================
+                   Orig * |       7 |        - | 125415306.7
+                   Normal |       9 |    1.286 | 102611523.9
+                     Slow |       9 |    1.286 | 104511907.0
+===============================================================================
+
+Compared to MSVC x64:
+===============================================================================
+   Name (baseline is *)   |  ns/op  | Baseline |  Ops/second
+===============================================================================
+                   Orig * |       7 |        - | 125415306.7
+                   Normal |       7 |    1.000 | 125068014.0
+                     Slow |       7 |    1.000 | 125414084.7
+===============================================================================
+
+
+Repro:
+
+https://github.com/Daspien27/MoveEllisionBenchmark
+
+I have two projects that display this issue. Both are written using cmake and can be built by using the following commands in the root directory:
+    - mkdir build
+    - cd build/
+    - cmake .. -G"Visual Studio 15 2017"
+
+The first project MoveEllisionBenchmark is a generic example that allows you to observe the effect with 4 different types, 
+   as when testing I found float, double, int, etc. all could have different effects.
+
+The second project MinimalWorkingExample is a barebones implementation of the problem with just the 'double' case.
+
+I also provide preprocessed code snippets, main_preprocessed.i and minimal_preprocessed.i
