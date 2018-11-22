@@ -215,6 +215,7 @@ PICOBENCH (LongBenchmark::Slow).samples (SAMPLE_SIZE);
 
 int main (int argc, char* argv[])
 {
+   //Pregenerate some objects per type tested
    DoubleBenchmark::GeneratePredeterminedObjects();
    FloatBenchmark::GeneratePredeterminedObjects();
    IntBenchmark::GeneratePredeterminedObjects();
@@ -233,8 +234,9 @@ int main (int argc, char* argv[])
       report.to_text_concise (std::cout);
    }
 
-   std::cout << DoubleBenchmark::record << std::endl;
-   std::cout << FloatBenchmark::record << std::endl;
-   std::cout << IntBenchmark::record << std::endl;
-   std::cout << LongBenchmark::record << std::endl;
+   std::cout << "Garbage values to 'hopefully' ensure code isn't optimized away...\n"
+             << DoubleBenchmark::record << "\n"
+             << FloatBenchmark::record << "\n"
+             << IntBenchmark::record << "\n"
+             << LongBenchmark::record << std::endl;
 }
