@@ -6,267 +6,235 @@
 #include <random>
 #include <vector>
 #include <limits>
+#include <memory>
 #undef min
 #undef max
 
-using decimal = double;
-
-const decimal MIN = static_cast<decimal> (-10000.0);//std::numeric_limits<decimal>::min ();
-const decimal MAX = static_cast<decimal> ( 10000.0);//std::numeric_limits<decimal>::max ();
-
 const size_t ARRAY_SIZE = 200;
-const int SAMPLE_SIZE = 400;
-
 
 template<typename T> 
 struct dependent_false : std::false_type {};
 
-struct Obj
+
+template<typename T>
+struct BenchmarkHelper
 {
-   decimal x = 0;
-   decimal y = 0;
-   decimal z = 0;
-   decimal w = 0;
-
-   Obj operator-(const Obj& RHS) const
-   {
-      return {x - RHS.x, y - RHS.y, z - RHS.z, w - RHS.w};
-   }
-
-   void ApplyLambda (const Obj& A, const Obj& B)
-   {
-      auto lambda = [](auto& O, auto& A, auto& B) { O = A - B; };
-
-      lambda(x, A.x, B.x);
-      lambda(y, A.y, B.y);
-      lambda(z, A.z, B.z);
-      lambda(w, A.w, B.w);
-   }
-   //Obj () = default;
-   //Obj (Obj&&) = default;
-   //Obj& operator= (Obj&&) = default;
-   //Obj& operator= (const Obj&) = default;
-   //Obj (const Obj&) = default;
-
+   static constexpr T MIN = std::numeric_limits<T>::min ();
+   static constexpr T MAX = std::numeric_limits<T>::max ();
 };
 
-Obj global;
-std::vector<Obj> PredeterminedObjects;
-decimal record;
 
-std::vector<std::pair<size_t, size_t>> GeneratePairsOfIndices (int NumberOfPairs)
+template<typename T, T const& MIN = BenchmarkHelper<T>::MIN, T const& MAX = BenchmarkHelper<T>::MAX>
+class Benchmark
 {
-   std::random_device rd;
-   std::uniform_int_distribution<size_t> u(0, ARRAY_SIZE - 1);
+public:
 
-   std::vector<std::pair<size_t,size_t>> Pairs;
+   using decimal = T;
 
-   Pairs.resize(NumberOfPairs);
+private:
 
-   std::generate(std::begin(Pairs), std::end(Pairs), [&u, &rd](){return std::make_pair(u(rd), u(rd));});
-
-   return Pairs;
-}
-
-static void Original (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   struct Obj
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      decimal x = 0;
+      decimal y = 0;
+      decimal z = 0;
+      decimal w = 0;
 
-      Obj C;
+      Obj operator-(const Obj& RHS) const
+      {
+         return {x - RHS.x, y - RHS.y, z - RHS.z, w - RHS.w};
+      }
+   };
 
-      C.x = A.x - B.x;
-      C.y = A.y - B.y;
-      C.z = A.z - B.z;
-      C.w = A.w - B.w;
-
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
-   }
-}
-PICOBENCH (Original).samples (SAMPLE_SIZE).baseline();
+   static std::vector<Obj> PredeterminedObjects;
 
 
-static void Normal (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   static std::vector<std::pair<size_t, size_t>> GeneratePairsOfIndices (int NumberOfPairs)
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      std::random_device rd;
+      std::uniform_int_distribution<size_t> u(0, ARRAY_SIZE - 1);
 
-      Obj C = A - B;
+      std::vector<std::pair<size_t,size_t>> Pairs;
 
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      Pairs.resize(NumberOfPairs);
+
+      std::generate(std::begin(Pairs), std::end(Pairs), [&u, &rd](){return std::make_pair(u(rd), u(rd));});
+
+      return Pairs;
    }
-}
-PICOBENCH (Normal).samples (SAMPLE_SIZE);
+
+public:
 
 
-static void NormalMoved (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
+   static decimal record;
 
-   for (auto _ : s)
+   static void GeneratePredeterminedObjects ()
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      std::random_device rd;
+      PredeterminedObjects.resize(ARRAY_SIZE);
 
-      Obj C = std::move(A - B);
+      if constexpr (std::is_floating_point_v<decimal>)
+      {
+         std::uniform_real_distribution<decimal> u(MIN, MAX);
+         std::generate(std::begin(PredeterminedObjects), std::end (PredeterminedObjects), [&u, &rd](){return Obj{u(rd), u(rd), u(rd), u(rd)};});
 
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      }
+      else if constexpr (std::is_integral_v<decimal>)
+      {
+         std::uniform_int_distribution<decimal> u(MIN, MAX);
+         std::generate(std::begin(PredeterminedObjects), std::end (PredeterminedObjects), [&u, &rd](){return Obj{u(rd), u(rd), u(rd), u(rd)};});
+      }
+      else
+      {
+         static_assert(!std::is_floating_point_v<decimal> && !std::is_integral_v<decimal>, "Please use an arithmetic type.");
+      }
    }
-}
-PICOBENCH (NormalMoved).samples (SAMPLE_SIZE);
 
-static void Slow (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   static void Orig (picobench::state& s)
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      auto Pairs = GeneratePairsOfIndices(s.iterations());
+      auto Iter = Pairs.begin();
 
-      Obj C;
+      for (auto _ : s)
+      {
+         const Obj& A = PredeterminedObjects[Iter->first];
+         const Obj& B = PredeterminedObjects[Iter->second];
+         Iter++;
 
-      C = A - B;
+         Obj C;
 
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+         C.x = A.x - B.x;
+         C.y = A.y - B.y;
+         C.z = A.z - B.z;
+         C.w = A.w - B.w;
+
+         record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      }
    }
-}
-PICOBENCH (Slow).samples (SAMPLE_SIZE);
 
-/*
-static void SlowMoved (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   static void Normal (picobench::state& s)
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      auto Pairs = GeneratePairsOfIndices(s.iterations());
+      auto Iter = Pairs.begin();
 
-      Obj C;
+      for (auto _ : s)
+      {
+         const Obj& A = PredeterminedObjects[Iter->first];
+         const Obj& B = PredeterminedObjects[Iter->second];
+         Iter++;
 
-      C = A - B;
+         Obj C = A - B;
 
-      //global = std::move(C);
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+         record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      }
    }
-}
-PICOBENCH (SlowMoved).samples (SAMPLE_SIZE);
-*/
 
-void ObjMinusByRef (Obj& Difference, const Obj& Minuend, const Obj& Subtrahend)
-{
-      Difference.x = Minuend.x - Subtrahend.x;
-      Difference.y = Minuend.y - Subtrahend.y;
-      Difference.z = Minuend.z - Subtrahend.z;
-      Difference.w = Minuend.w - Subtrahend.w;
-}
-
-static void FunctionRef (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   static void Moved (picobench::state& s)
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      auto Pairs = GeneratePairsOfIndices(s.iterations());
+      auto Iter = Pairs.begin();
 
-      Obj C;
+      for (auto _ : s)
+      {
+         const Obj& A = PredeterminedObjects[Iter->first];
+         const Obj& B = PredeterminedObjects[Iter->second];
+         Iter++;
 
-      ObjMinusByRef (C, A, B);
+         Obj C = std::move(A - B);
 
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+         record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      }
    }
-}
-PICOBENCH (FunctionRef).samples (SAMPLE_SIZE);
 
-
-static void LambdaVersion (picobench::state& s)
-{
-   auto Pairs = GeneratePairsOfIndices(s.iterations());
-   auto Iter = Pairs.begin();
-
-   for (auto _ : s)
+   static void Slow (picobench::state& s)
    {
-      const Obj& A = PredeterminedObjects[Iter->first];
-      const Obj& B = PredeterminedObjects[Iter->second];
-      Iter++;
+      auto Pairs = GeneratePairsOfIndices(s.iterations());
+      auto Iter = Pairs.begin();
 
-      Obj C;
+      for (auto _ : s)
+      {
+         const Obj& A = PredeterminedObjects[Iter->first];
+         const Obj& B = PredeterminedObjects[Iter->second];
+         Iter++;
 
-      C.ApplyLambda(A, B);
+         Obj C;
 
-      record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+         C = A - B;
+
+         record = record/static_cast<decimal>(10) + C.x + C.y + C.z + C.w;
+      }
    }
-}
-PICOBENCH (LambdaVersion).samples (SAMPLE_SIZE);
+};
+
+template<typename T, const T& MIN, const T& MAX>
+std::vector<typename Benchmark<T, MIN, MAX>::Obj> Benchmark<T, MIN, MAX>::PredeterminedObjects = std::vector<typename Benchmark<T, MIN, MAX>::Obj> (ARRAY_SIZE);
+
+template<typename T, const T& MIN, const T& MAX>
+typename Benchmark<T, MIN, MAX>::decimal Benchmark<T, MIN, MAX>::record = static_cast<typename Benchmark<T, MIN, MAX>::decimal> (0.0);
 
 
-template <typename T>
-void GeneratePredeterminedObjects ()
-{
-   PredeterminedObjects.resize(ARRAY_SIZE);
+const int SAMPLE_SIZE = 400;
 
-   std::random_device rd;
+/////////////// Double Test/////////////////////
+using DoubleBenchmark = Benchmark<double>;
 
-   if constexpr (std::is_floating_point_v<T>)
-   {
-      std::uniform_real_distribution<decimal> u(MIN, MAX);
-      std::generate(std::begin(PredeterminedObjects), std::end (PredeterminedObjects), [u, &rd](){return Obj{u(rd), u(rd), u(rd), u(rd)};});
+PICOBENCH_SUITE("Double benchmark");
+PICOBENCH (DoubleBenchmark::Orig).samples (SAMPLE_SIZE).baseline();
+PICOBENCH (DoubleBenchmark::Normal).samples (SAMPLE_SIZE);
+PICOBENCH (DoubleBenchmark::Moved).samples (SAMPLE_SIZE);
+PICOBENCH (DoubleBenchmark::Slow).samples (SAMPLE_SIZE);
 
-   }
-   else if constexpr (std::is_integral_v<T>)
-   {
-      std::uniform_int_distribution<T> u(MIN, MAX);
-      std::generate(std::begin(PredeterminedObjects), std::end (PredeterminedObjects), [u, &rd](){return Obj{u(rd), u(rd), u(rd), u(rd)};});
-   }
-   else
-   {
-    //  static_assert(dependent_false<T>, "Please use an arithmetic type.");
-   }
-}
+
+/////////////// Float Test/////////////////////
+using FloatBenchmark = Benchmark<float>;
+
+PICOBENCH_SUITE("Float benchmark");
+PICOBENCH (FloatBenchmark::Orig).samples (SAMPLE_SIZE).baseline();
+PICOBENCH (FloatBenchmark::Normal).samples (SAMPLE_SIZE);
+PICOBENCH (FloatBenchmark::Moved).samples (SAMPLE_SIZE);
+PICOBENCH (FloatBenchmark::Slow).samples (SAMPLE_SIZE);
+
+
+/////////////// Int Test/////////////////////
+using IntBenchmark = Benchmark<int>;
+
+PICOBENCH_SUITE("Int benchmark");
+PICOBENCH (IntBenchmark::Orig).samples (SAMPLE_SIZE).baseline();
+PICOBENCH (IntBenchmark::Normal).samples (SAMPLE_SIZE);
+PICOBENCH (IntBenchmark::Moved).samples (SAMPLE_SIZE);
+PICOBENCH (IntBenchmark::Slow).samples (SAMPLE_SIZE);
+
+/////////////// Int Test/////////////////////
+using LongBenchmark = Benchmark<long>;
+
+PICOBENCH_SUITE("Long benchmark");
+PICOBENCH (LongBenchmark::Orig).samples (SAMPLE_SIZE).baseline();
+PICOBENCH (LongBenchmark::Normal).samples (SAMPLE_SIZE);
+PICOBENCH (LongBenchmark::Moved).samples (SAMPLE_SIZE);
+PICOBENCH (LongBenchmark::Slow).samples (SAMPLE_SIZE);
 
 int main (int argc, char* argv[])
 {
-
-   GeneratePredeterminedObjects<decimal> ();
+   DoubleBenchmark::GeneratePredeterminedObjects();
+   FloatBenchmark::GeneratePredeterminedObjects();
+   IntBenchmark::GeneratePredeterminedObjects();
+   LongBenchmark::GeneratePredeterminedObjects();
 
    picobench::runner runner;
-   // Optionally parse command line
    
    runner.parse_cmd_line (argc, argv);
    
-   if (runner.should_run ()) // Cmd line may have disabled benchmarks
+   if (runner.should_run ())
    {
       runner.run_benchmarks ();
       auto report = runner.generate_report ();
-      // Then to output the data in the report use
+
       report.to_text (std::cout); // Default
-      // or
-      report.to_text_concise (std::cout); // No iterations breakdown
-      // or
-      //report.to_csv (std::cout); // Otputs in csv format. Most detailed
+      report.to_text_concise (std::cout);
    }
 
-   std::cout << record << std::endl;
+   std::cout << DoubleBenchmark::record << std::endl;
+   std::cout << FloatBenchmark::record << std::endl;
+   std::cout << IntBenchmark::record << std::endl;
+   std::cout << LongBenchmark::record << std::endl;
 }
