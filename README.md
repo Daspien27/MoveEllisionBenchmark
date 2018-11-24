@@ -1,6 +1,9 @@
 # MoveEllisionBenchmark
 [![Language](https://img.shields.io/badge/language-C++-blue.svg)](https://isocpp.org/) [![Standard](https://img.shields.io/badge/C%2B%2B-17-blue.svg)](https://en.wikipedia.org/wiki/C%2B%2B#Standardization) [![License](https://img.shields.io/badge/license-MIT-blue.svg)](https://opensource.org/licenses/MIT)
 
+<!---
+The format of the above icons were taken from the picobench library
+-->
 ## What is this?
 
 This project has been made to reveal an inconsistency in the MSVC x86 compiler. It uses [picobench](https://github.com/iboB/picobench) and cmake to provide an analysis against MSVC and Clang (x86 and amd64).
