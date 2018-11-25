@@ -4,9 +4,15 @@
 #include <algorithm>
 #include <random>
 #include <numeric>
+#include <vector>
+#include <array>
 
 const size_t ARRAY_SIZE = 200;
 const int SAMPLE_SIZE = 400;
+
+
+auto MINUS_IMPL = [](auto a, auto b) {return a - b;};
+// could be std::minus<>{} but apparently MSVC is slower with it...
 
 struct Obj
 {
@@ -16,14 +22,61 @@ struct Obj
     {
         Obj Ret;
 
-        std::transform (std::begin(a), std::end(a), std::begin(B.a), std::begin(Ret.a), [](auto a, auto b) {return a - b;});
+        std::transform (std::begin(a), std::end(a), std::begin(B.a), std::begin(Ret.a), MINUS_IMPL);
+
+        return Ret;
+    }
+
+    Obj operator_minus (const Obj& B) const
+    {
+        Obj Ret;
+
+        std::transform (std::begin(a), std::end(a), std::begin(B.a), std::begin(Ret.a), MINUS_IMPL);
+
+        return Ret;
+    }
+
+
+    Obj operator_static_minus (const Obj& B) const
+    {
+        static Obj Ret;
+
+        std::transform (std::begin(a), std::end(a), std::begin(B.a), std::begin(Ret.a), MINUS_IMPL);
 
         return Ret;
     }
 
     static void ObjMinus (Obj& Ret, const Obj& A, const Obj& B)
     {
-        std::transform (std::begin(A.a), std::end(A.a), std::begin(B.a), std::begin(Ret.a), [](auto a, auto b) {return a - b;});
+        std::transform (std::begin(A.a), std::end(A.a), std::begin(B.a), std::begin(Ret.a), MINUS_IMPL);
+    }
+
+
+    template<class _Fn>
+    struct Handler
+    {
+        _Fn _Func;
+        Handler(_Fn Func) : _Func(Func) {}
+
+        void operator() (Obj& Ret) const
+        {
+            _Func(Ret);
+        }
+    };
+
+    auto operator_handler(const Obj& B) const
+    {
+        const Obj& A = *this;
+
+        return Handler ([&A, &B] (Obj& Ret){std::transform (std::begin(A.a), std::end(A.a), std::begin(B.a), std::begin(Ret.a), MINUS_IMPL);});
+    }
+
+    template <class Hndl>
+    Obj& operator= (const Hndl& H)
+    {
+        H(*this);
+
+        return *this;
     }
 
     double Sum() const
@@ -73,7 +126,7 @@ static void Orig (picobench::state& s)
 
         Obj C;
 
-        std::transform (std::begin(A.a), std::end(A.a), std::begin(B.a), std::begin(C.a), [](auto a, auto b) {return a - b;});
+        std::transform (std::begin(A.a), std::end(A.a), std::begin(B.a), std::begin(C.a), MINUS_IMPL);
 
         record = record/static_cast<double>(10) + C.Sum ();
     }
@@ -119,6 +172,23 @@ static void Normal (picobench::state& s)
 }
 PICOBENCH (Normal).samples (SAMPLE_SIZE);
 
+static void NormalStatic (picobench::state& s)
+{
+    auto Pairs = GeneratePairsOfIndices(s.iterations());
+    auto Iter = Pairs.begin();
+
+    for (auto _ : s)
+    {
+        const Obj& A = global[Iter->first];
+        const Obj& B = global[Iter->second];
+        Iter++;
+
+        Obj C = A.operator_static_minus(B);
+
+        record = record/static_cast<double>(10) + C.Sum ();
+    }
+}
+PICOBENCH (NormalStatic).samples (SAMPLE_SIZE);
 
 static void Slow (picobench::state& s)
 {
@@ -140,6 +210,49 @@ static void Slow (picobench::state& s)
 }
 PICOBENCH (Slow).samples (SAMPLE_SIZE);
 
+
+static void SlowMinus (picobench::state& s)
+{
+    auto Pairs = GeneratePairsOfIndices(s.iterations());
+    auto Iter = Pairs.begin();
+
+    for (auto _ : s)
+    {
+        const Obj& A = global[Iter->first];
+        const Obj& B = global[Iter->second];
+        Iter++;
+
+        Obj C;
+
+        C = A.operator_minus(B);
+
+        record = record/static_cast<double>(10) + C.Sum ();
+    }
+}
+PICOBENCH (SlowMinus).samples (SAMPLE_SIZE);
+
+
+static void SlowStaticMinus (picobench::state& s)
+{
+    auto Pairs = GeneratePairsOfIndices(s.iterations());
+    auto Iter = Pairs.begin();
+
+    for (auto _ : s)
+    {
+        const Obj& A = global[Iter->first];
+        const Obj& B = global[Iter->second];
+        Iter++;
+
+        Obj C;
+
+        C = A.operator_static_minus(B);
+
+        record = record/static_cast<double>(10) + C.Sum ();
+    }
+}
+PICOBENCH (SlowStaticMinus).samples (SAMPLE_SIZE);
+
+
 Obj GlobalC;
 
 static void GlobalSlow (picobench::state& s)
@@ -159,6 +272,26 @@ static void GlobalSlow (picobench::state& s)
     }
 }
 PICOBENCH (GlobalSlow).samples (SAMPLE_SIZE);
+
+static void OperatorHandler (picobench::state& s)
+{
+    auto Pairs = GeneratePairsOfIndices(s.iterations());
+    auto Iter = Pairs.begin();
+
+    for (auto _ : s)
+    {
+        const Obj& A = global[Iter->first];
+        const Obj& B = global[Iter->second];
+        Iter++;
+
+        Obj C;
+
+        C = A.operator_handler(B);
+
+        record = record/static_cast<double>(10) + C.Sum ();
+    }
+}
+PICOBENCH (OperatorHandler).samples (SAMPLE_SIZE);
 
 
 int main (int argc, char* argv[])
